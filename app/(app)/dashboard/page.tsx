@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 
 interface DayPlan {
   day: string
+  date?: string
   focus: string
   workout: string
   duration: string
@@ -110,7 +111,14 @@ export default async function DashboardPage() {
                 <Card key={day.day} className={day.isRest ? 'opacity-60' : ''}>
                   <CardHeader className="pb-2">
                     <div className="flex items-center justify-between">
-                      <CardTitle className="text-sm font-semibold">{day.day}</CardTitle>
+                      <div>
+                        <CardTitle className="text-sm font-semibold">{day.day}</CardTitle>
+                        {day.date && (
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(day.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </p>
+                        )}
+                      </div>
                       <Badge variant={day.isRest ? 'secondary' : 'outline'} className="text-xs">
                         {day.isRest ? 'Rest' : day.duration}
                       </Badge>
