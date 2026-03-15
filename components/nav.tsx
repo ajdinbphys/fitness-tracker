@@ -3,7 +3,6 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Button } from '@/components/ui/button'
 
 const NAV_LINKS = [
   { href: '/dashboard', label: 'Dashboard' },
@@ -22,31 +21,53 @@ export function Nav() {
   }
 
   return (
-    <header className="border-b bg-white sticky top-0 z-10">
-      <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
-        <div className="flex items-center gap-6">
-          <Link href="/dashboard" className="font-bold text-lg tracking-tight">
-            FitLog
+    <header className="sticky top-0 z-20 border-b border-border/60 bg-background/90 backdrop-blur-md">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
+
+        {/* Left: logo + nav */}
+        <div className="flex items-center gap-6 sm:gap-8">
+          <Link
+            href="/dashboard"
+            className="flex items-center gap-2 group"
+          >
+            <span className="h-5 w-5 rounded bg-primary flex items-center justify-center text-[10px] font-bold text-primary-foreground select-none">
+              F
+            </span>
+            <span className="text-sm font-semibold tracking-tight text-foreground">
+              FitLog
+            </span>
           </Link>
+
           <nav className="flex items-center gap-1">
-            {NAV_LINKS.map(({ href, label }) => (
-              <Link
-                key={href}
-                href={href}
-                className={`text-sm px-3 py-1.5 rounded-md transition-colors ${
-                  pathname.startsWith(href)
-                    ? 'bg-gray-100 text-gray-900 font-medium'
-                    : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
-                }`}
-              >
-                {label}
-              </Link>
-            ))}
+            {NAV_LINKS.map(({ href, label }) => {
+              const active = pathname.startsWith(href)
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`relative text-sm px-3 py-1.5 rounded-md transition-colors ${
+                    active
+                      ? 'text-foreground font-medium'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {label}
+                  {active && (
+                    <span className="absolute inset-x-1 -bottom-[1px] h-px bg-primary rounded-full" />
+                  )}
+                </Link>
+              )
+            })}
           </nav>
         </div>
-        <Button variant="ghost" size="sm" onClick={handleSignOut}>
+
+        {/* Right: sign out */}
+        <button
+          onClick={handleSignOut}
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
           Sign out
-        </Button>
+        </button>
       </div>
     </header>
   )

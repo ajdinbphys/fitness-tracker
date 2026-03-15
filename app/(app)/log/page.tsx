@@ -1,12 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Separator } from '@/components/ui/separator'
 
 interface ParsedWorkout {
   activityType: string
@@ -37,6 +33,14 @@ interface LogResult {
   parsed: ParsedWorkout
 }
 
+function Chip({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium bg-muted text-muted-foreground">
+      {children}
+    </span>
+  )
+}
+
 export default function LogPage() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -44,10 +48,9 @@ export default function LogPage() {
   const [lastResult, setLastResult] = useState<LogResult | null>(null)
   const [history, setHistory] = useState<WorkoutEntry[]>([])
   const [historyLoading, setHistoryLoading] = useState(true)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  useEffect(() => {
-    fetchHistory()
-  }, [])
+  useEffect(() => { fetchHistory() }, [])
 
   async function fetchHistory() {
     setHistoryLoading(true)
@@ -60,7 +63,7 @@ export default function LogPage() {
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.SyntheticEvent) {
     e.preventDefault()
     if (!input.trim()) return
 
@@ -88,136 +91,153 @@ export default function LogPage() {
   }
 
   return (
-    <div className="space-y-8 max-w-2xl">
+    <div className="space-y-12 max-w-2xl">
+
+      {/* ── Header ── */}
       <div>
-        <h1 className="text-2xl font-bold">Log a Workout</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Describe your workout in plain text — Claude will extract the details
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest mb-1">
+          Log
+        </p>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Log a workout</h1>
+        <p className="text-sm text-muted-foreground mt-1.5">
+          Type anything — Claude extracts the structured data automatically
         </p>
       </div>
 
-      <Card>
-        <CardContent className="pt-6">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <Textarea
-              placeholder={`e.g. "did 5km this morning, felt tired" or "chest day, bench press 4×8 at 80kg, incline DB press 3×10, felt strong"`}
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              rows={4}
-              className="resize-none"
-              disabled={loading}
-            />
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-            <Button type="submit" disabled={loading || !input.trim()} className="w-full">
-              {loading ? 'Parsing...' : 'Log workout'}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+      {/* ── Input card ── */}
+      <form onSubmit={handleSubmit} className="rounded-xl border border-border bg-card overflow-hidden">
+        <Textarea
+          ref={textareaRef}
+          placeholder={'e.g. "did 5km this morning, felt tired"\nor "chest day — bench press 4×8 at 80kg, felt strong"'}
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          rows={4}
+          className="resize-none border-0 rounded-none bg-transparent text-sm leading-relaxed focus-visible:ring-0 focus-visible:ring-offset-0 px-5 pt-4 pb-3"
+          disabled={loading}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault()
+              handleSubmit(e)
+            }
+          }}
+        />
+        <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-muted/30">
+          <p className="text-[11px] text-muted-foreground hidden sm:block">
+            ⌘ Return to submit
+          </p>
+          <Button
+            type="submit"
+            size="sm"
+            disabled={loading || !input.trim()}
+            className="ml-auto"
+          >
+            {loading ? (
+              <span className="flex items-center gap-2">
+                <span className="h-3.5 w-3.5 rounded-full border-2 border-primary-foreground/40 border-t-primary-foreground animate-spin" />
+                Parsing…
+              </span>
+            ) : 'Log workout'}
+          </Button>
+        </div>
+      </form>
 
-      {lastResult && (
-        <Card className="border-green-200 bg-green-50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base text-green-800">Logged!</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-green-700 italic">&ldquo;{lastResult.workout.raw_input}&rdquo;</p>
-            <div className="flex flex-wrap gap-2">
-              {lastResult.parsed.activityType && (
-                <Badge className="capitalize bg-green-700">{lastResult.parsed.activityType}</Badge>
-              )}
-              {lastResult.parsed.durationMinutes && (
-                <Badge variant="outline">{lastResult.parsed.durationMinutes} min</Badge>
-              )}
-              {lastResult.parsed.distance && (
-                <Badge variant="outline">{lastResult.parsed.distance}</Badge>
-              )}
-              {lastResult.parsed.perceivedEffort && (
-                <Badge variant="outline">RPE {lastResult.parsed.perceivedEffort}/10</Badge>
-              )}
-            </div>
-            {lastResult.parsed.exercises.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-green-800 mb-1">Exercises</p>
-                <ul className="space-y-1">
-                  {lastResult.parsed.exercises.map((ex, i) => (
-                    <li key={i} className="text-xs text-green-700">
-                      {ex.name}
-                      {ex.sets && ex.reps ? ` — ${ex.sets}×${ex.reps}` : ''}
-                      {ex.weight ? ` @ ${ex.weight}` : ''}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {lastResult.parsed.notes && (
-              <p className="text-xs text-green-600">{lastResult.parsed.notes}</p>
-            )}
-          </CardContent>
-        </Card>
+      {/* ── Error ── */}
+      {error && (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {error}
+        </div>
       )}
 
-      <Separator />
+      {/* ── Confirmation card ── */}
+      {lastResult && (
+        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 border-l-2 border-l-emerald-500 overflow-hidden">
+          <div className="px-5 py-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              <p className="text-xs font-semibold text-emerald-400 uppercase tracking-widest">Logged</p>
+            </div>
 
-      <div>
-        <h2 className="font-semibold mb-4">Workout History</h2>
+            <p className="text-sm text-foreground/80 italic">
+              &ldquo;{lastResult.workout.raw_input}&rdquo;
+            </p>
+
+            <div className="flex flex-wrap gap-1.5">
+              {lastResult.parsed.activityType && (
+                <Chip>{lastResult.parsed.activityType}</Chip>
+              )}
+              {lastResult.parsed.durationMinutes && (
+                <Chip>{lastResult.parsed.durationMinutes} min</Chip>
+              )}
+              {lastResult.parsed.distance && (
+                <Chip>{lastResult.parsed.distance}</Chip>
+              )}
+              {lastResult.parsed.perceivedEffort && (
+                <Chip>RPE {lastResult.parsed.perceivedEffort}/10</Chip>
+              )}
+            </div>
+
+            {lastResult.parsed.exercises.length > 0 && (
+              <div className="space-y-1 pt-1">
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Exercises</p>
+                {lastResult.parsed.exercises.map((ex, i) => (
+                  <p key={i} className="text-xs text-muted-foreground">
+                    {ex.name}
+                    {ex.sets && ex.reps ? ` — ${ex.sets}×${ex.reps}` : ''}
+                    {ex.weight ? ` @ ${ex.weight}` : ''}
+                  </p>
+                ))}
+              </div>
+            )}
+
+            {lastResult.parsed.notes && (
+              <p className="text-xs text-muted-foreground">{lastResult.parsed.notes}</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── History ── */}
+      <section>
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest mb-4">
+          History
+        </p>
+
         {historyLoading ? (
-          <p className="text-sm text-muted-foreground">Loading...</p>
+          <div className="flex justify-center py-10">
+            <div className="h-5 w-5 rounded-full border-2 border-border border-t-muted-foreground animate-spin" />
+          </div>
         ) : history.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No workouts logged yet.</p>
+          <p className="text-sm text-muted-foreground py-6">No workouts logged yet.</p>
         ) : (
-          <div className="space-y-3">
+          <div className="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
             {history.map((w) => (
-              <Card key={w.id}>
-                <CardContent className="pt-4 pb-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium">{w.raw_input}</p>
-                      <div className="flex gap-2 mt-2 flex-wrap">
-                        {w.activity_type && (
-                          <Badge variant="secondary" className="text-xs capitalize">
-                            {w.activity_type}
-                          </Badge>
-                        )}
-                        {w.duration_minutes && (
-                          <Badge variant="outline" className="text-xs">
-                            {w.duration_minutes} min
-                          </Badge>
-                        )}
-                        {w.parsed_json?.distance && (
-                          <Badge variant="outline" className="text-xs">
-                            {w.parsed_json.distance}
-                          </Badge>
-                        )}
-                        {w.parsed_json?.perceivedEffort && (
-                          <Badge variant="outline" className="text-xs">
-                            RPE {w.parsed_json.perceivedEffort}/10
-                          </Badge>
-                        )}
-                      </div>
-                      {w.parsed_json?.exercises?.length > 0 && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {w.parsed_json.exercises.map(ex => ex.name).join(', ')}
-                        </p>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground whitespace-nowrap">
-                      {new Date(w.logged_at).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                      })}
-                    </p>
+              <div key={w.id} className="flex items-start gap-4 px-5 py-4">
+                <div className="flex-1 min-w-0 space-y-2">
+                  <p className="text-sm text-foreground leading-snug">{w.raw_input}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {w.activity_type && <Chip>{w.activity_type}</Chip>}
+                    {w.duration_minutes && <Chip>{w.duration_minutes} min</Chip>}
+                    {w.parsed_json?.distance && <Chip>{w.parsed_json.distance}</Chip>}
+                    {w.parsed_json?.perceivedEffort && (
+                      <Chip>RPE {w.parsed_json.perceivedEffort}/10</Chip>
+                    )}
                   </div>
-                </CardContent>
-              </Card>
+                  {w.parsed_json?.exercises?.length > 0 && (
+                    <p className="text-[11px] text-muted-foreground">
+                      {w.parsed_json.exercises.map(ex => ex.name).join(', ')}
+                    </p>
+                  )}
+                </div>
+                <time className="shrink-0 text-xs text-muted-foreground pt-0.5">
+                  {new Date(w.logged_at).toLocaleDateString('en-US', {
+                    month: 'short', day: 'numeric',
+                  })}
+                </time>
+              </div>
             ))}
           </div>
         )}
-      </div>
+      </section>
     </div>
   )
 }
