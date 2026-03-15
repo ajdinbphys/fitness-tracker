@@ -14,18 +14,14 @@ function calcAge(dateOfBirth: string): number {
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { goal, fitnessLevel, daysPerWeek, profile, planStartDate } = await req.json()
-
   if (!goal || !fitnessLevel || !daysPerWeek) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
-  // Save profile to Supabase (upsert so re-onboarding works)
+  // Save profile
   if (profile) {
     const serviceClient = createServiceClient()
     await serviceClient.from('profiles').upsert({
@@ -37,7 +33,6 @@ export async function POST(req: NextRequest) {
     }, { onConflict: 'user_id' })
   }
 
-  // Build profile context string for Claude
   const profileContext = profile
     ? `User profile:
 - Sex: ${profile.sex}
@@ -50,45 +45,69 @@ export async function POST(req: NextRequest) {
 
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 2048,
+    max_tokens: 4096,
     messages: [
       {
         role: 'user',
-        content: `You are a personal fitness coach. Create a structured weekly training plan based on the user's goal and profile.
+        content: `You are a personal fitness coach. Create a detailed weekly training plan.
 
 ${profileContext}
 
 Goal: ${goal}
 Fitness level: ${fitnessLevel}
-Available days per week: ${daysPerWeek}
+Available training days: ${daysPerWeek} per week
 Plan start date: ${weekStartDate}
 
-Factor in the user's age, sex, height, and weight when setting intensity, volume, and recovery recommendations. Use the plan start date to label the days correctly (the first day of the plan is ${weekStartDate}).
+Factor in the user's age, sex, height, and weight when choosing weights, distances, and intensities.
 
-Return JSON only, no markdown, no preamble. Use this exact structure:
+Return JSON only, no markdown, no preamble. Use exactly this structure:
 {
-  "summary": "<1-2 sentence overview of the plan>",
+  "summary": "<1-2 sentence overview>",
   "weekStartDate": "${weekStartDate}",
   "weeklyPlan": [
     {
-      "day": "<day name, e.g. Monday>",
+      "day": "<day name e.g. Monday>",
       "date": "<YYYY-MM-DD>",
-      "focus": "<e.g. Rest, Running, Strength - Upper Body>",
-      "workout": "<detailed description of what to do>",
-      "duration": "<e.g. 45 minutes>",
-      "isRest": false
+      "focus": "<e.g. Easy Run, Rest, Strength — Upper Body>",
+      "workout": "<plain-English description of the full session>",
+      "duration": "<e.g. 40 minutes>",
+      "isRest": <true|false>,
+
+      "runningTargets": <null for non-running days, or:> {
+        "distanceKm": <number>,
+        "durationMinutes": <number>,
+        "paceMinPerKm": <decimal e.g. 6.5 for 6:30/km>,
+        "paceKmPerH": <decimal e.g. 9.2>,
+        "intensityType": "easy|moderate|tempo|interval|long_run|recovery"
+      },
+
+      "exercises": <[] for non-lifting days, or array of:> [
+        {
+          "exerciseName": "<full name>",
+          "muscleGroups": ["<primary>", "<secondary>"],
+          "sets": <number>,
+          "reps": <number>,
+          "weightGuidance": "<e.g. '70% of 1RM' or '~60 kg for intermediate' or 'bodyweight'>"
+        }
+      ]
     }
   ],
   "tips": ["<tip 1>", "<tip 2>", "<tip 3>"]
 }
 
-Include exactly 7 consecutive days starting from the plan start date. Mark rest days with isRest: true. Tailor intensity and volume to the fitness level and user profile.`,
+Rules:
+- Include exactly 7 consecutive days starting from ${weekStartDate}.
+- Mark rest/active-recovery days with isRest: true, set runningTargets: null, exercises: [].
+- For running days: set runningTargets with realistic targets for this fitness level. Leave exercises: [].
+- For strength days: list 4-6 exercises with sets, reps, and weight guidance. Leave runningTargets: null.
+- muscleGroups must use only: chest, back, shoulders, biceps, triceps, forearms, core, quads, hamstrings, glutes, calves.
+- For mixed cardio+strength days: populate both runningTargets and exercises.
+- Tailor all numbers to the user's profile and fitness level.`,
       },
     ],
   })
 
   const text = (message.content[0] as { type: string; text: string }).text.trim()
-
   let planJson
   try {
     planJson = JSON.parse(text)
@@ -97,7 +116,6 @@ Include exactly 7 consecutive days starting from the plan start date. Mark rest 
   }
 
   const serviceClient = createServiceClient()
-
   const { data, error } = await serviceClient
     .from('plans')
     .insert({
