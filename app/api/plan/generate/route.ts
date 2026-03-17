@@ -45,11 +45,11 @@ export async function POST(req: NextRequest) {
 
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 4096,
+    max_tokens: 16384,
     messages: [
       {
         role: 'user',
-        content: `You are a personal fitness coach. Create a detailed weekly training plan.
+        content: `You are a personal fitness coach. Create a full multi-week training plan.
 
 ${profileContext}
 
@@ -58,51 +58,53 @@ Fitness level: ${fitnessLevel}
 Available training days: ${daysPerWeek} per week
 Plan start date: ${weekStartDate}
 
-Factor in the user's age, sex, height, and weight when choosing weights, distances, and intensities.
+Determine the total number of weeks from the goal (e.g. "race in 20 weeks" → 20 weeks). If no duration is mentioned, use 4 weeks.
+
+Factor in the user's age, sex, height, and weight when choosing weights, distances, and intensities. Progress the plan week-over-week (increase mileage, volume, or intensity gradually).
 
 Return JSON only, no markdown, no preamble. Use exactly this structure:
 {
   "summary": "<1-2 sentence overview>",
+  "totalWeeks": <number>,
   "weekStartDate": "${weekStartDate}",
   "weeklyPlan": [
     {
+      "week": <week number, 1-based>,
       "day": "<day name e.g. Monday>",
       "date": "<YYYY-MM-DD>",
       "focus": "<e.g. Easy Run, Rest, Strength — Upper Body>",
-      "workout": "<plain-English description of the full session>",
-      "duration": "<e.g. 40 minutes>",
+      "workout": "<plain-English description, 1 sentence>",
+      "duration": "<e.g. 40 min>",
       "isRest": <true|false>,
-
       "runningTargets": <null for non-running days, or:> {
-        "distanceKm": <number>,
-        "durationMinutes": <number>,
-        "paceMinPerKm": <decimal e.g. 6.5 for 6:30/km>,
-        "paceKmPerH": <decimal e.g. 9.2>,
-        "intensityType": "easy|moderate|tempo|interval|long_run|recovery"
+        "totalDistanceKm": <number>,
+        "totalDurationMinutes": <number>,
+        "paceMinPerKm": <overall avg pace, null for interval days>,
+        "paceKmPerH": <overall avg speed, null for interval days>,
+        "intensityType": "easy|moderate|tempo|interval|long_run|recovery",
+        "description": "<1-sentence summary e.g. '6×800m at 5K pace with jog recovery'>",
+        "segments": <null for simple runs; for structured sessions, array of:> [
+          { "type": "warmup",    "distanceKm": <n>, "durationMinutes": <n>, "paceMinPerKm": <n> },
+          { "type": "intervals", "reps": <n>, "repDistanceKm": <n>, "repPaceMinPerKm": <n>, "restSeconds": <n>, "restType": "jog|walk|standing" },
+          { "type": "tempo",     "distanceKm": <n>, "durationMinutes": <n>, "paceMinPerKm": <n> },
+          { "type": "cooldown",  "distanceKm": <n>, "durationMinutes": <n>, "paceMinPerKm": <n> }
+        ]
       },
-
-      "exercises": <[] for non-lifting days, or array of:> [
-        {
-          "exerciseName": "<full name>",
-          "muscleGroups": ["<primary>", "<secondary>"],
-          "sets": <number>,
-          "reps": <number>,
-          "weightGuidance": "<e.g. '70% of 1RM' or '~60 kg for intermediate' or 'bodyweight'>"
-        }
-      ]
+      "exercises": <[] or [{ "exerciseName": "<name>", "muscleGroups": ["<g>"], "sets": <n>, "reps": <n>, "weightGuidance": "<guidance>" }]>
     }
   ],
   "tips": ["<tip 1>", "<tip 2>", "<tip 3>"]
 }
 
 Rules:
-- Include exactly 7 consecutive days starting from ${weekStartDate}.
-- Mark rest/active-recovery days with isRest: true, set runningTargets: null, exercises: [].
-- For running days: set runningTargets with realistic targets for this fitness level. Leave exercises: [].
-- For strength days: list 4-6 exercises with sets, reps, and weight guidance. Leave runningTargets: null.
+- weeklyPlan must contain exactly totalWeeks × 7 entries, one per calendar day, consecutive from ${weekStartDate}.
+- Mark rest days with isRest: true, runningTargets: null, exercises: [].
+- Running days: populate runningTargets. Leave exercises: [].
+- Strength days: list 3-5 exercises. Leave runningTargets: null.
 - muscleGroups must use only: chest, back, shoulders, biceps, triceps, forearms, core, quads, hamstrings, glutes, calves.
-- For mixed cardio+strength days: populate both runningTargets and exercises.
-- Tailor all numbers to the user's profile and fitness level.`,
+- Keep workout field to 1 sentence. Put detail in runningTargets.description and segments.
+- Use segments for interval, tempo, and fartlek sessions. Null for easy/long runs.
+- Progress load/mileage each week by ~5-10%.`,
       },
     ],
   })

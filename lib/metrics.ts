@@ -12,6 +12,7 @@ export interface ExerciseRecord {
 export interface WorkoutRow {
   id: string
   logged_at: string
+  raw_input?: string
   activity_type: string | null
   duration_minutes: number | null
   distance_km: number | null
@@ -19,6 +20,7 @@ export interface WorkoutRow {
   pace_km_per_h: number | null
   exercises_json: ExerciseRecord[] | null
   total_volume_kg: number | null
+  parsed_json?: Record<string, unknown> | null
 }
 
 // ─── Running ───────────────────────────────────────────────────────────────────

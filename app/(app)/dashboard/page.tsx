@@ -14,66 +14,9 @@ import {
   type WorkoutRow,
   type HeatLevel,
 } from '@/lib/metrics'
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface RunningTargets {
-  distanceKm: number | null
-  durationMinutes: number | null
-  paceMinPerKm: number | null
-  paceKmPerH: number | null
-  intensityType: string | null
-}
-
-interface PlanExercise {
-  exerciseName: string
-  muscleGroups: string[]
-  sets: number
-  reps: number
-  weightGuidance: string
-}
-
-interface DayPlan {
-  day: string
-  date?: string
-  focus: string
-  workout: string
-  duration: string
-  isRest: boolean
-  runningTargets?: RunningTargets | null
-  exercises?: PlanExercise[]
-}
-
-interface PlanJson {
-  summary: string
-  weekStartDate?: string
-  weeklyPlan: DayPlan[]
-  tips: string[]
-}
-
-interface Plan {
-  id: string
-  goal: string
-  plan_json: PlanJson
-  week_start_date: string
-}
+import WeekCalendar, { type Plan } from '@/components/week-calendar'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function dayAccentClass(focus: string, isRest: boolean) {
-  if (isRest) return 'border-l-border/30'
-  const f = focus.toLowerCase()
-  if (f.includes('run') || f.includes('cardio') || f.includes('cycl') || f.includes('swim'))
-    return 'border-l-blue-500'
-  if (
-    f.includes('strength') || f.includes('upper') || f.includes('lower') ||
-    f.includes('push') || f.includes('pull') || f.includes('leg') || f.includes('gym')
-  )
-    return 'border-l-orange-500'
-  if (f.includes('yoga') || f.includes('flex') || f.includes('mobil') || f.includes('stretch'))
-    return 'border-l-emerald-500'
-  return 'border-l-primary'
-}
 
 const HEAT_CLASS: Record<HeatLevel, string> = {
   none:   'bg-muted/20 text-muted-foreground/30',
@@ -130,6 +73,20 @@ export default async function DashboardPage() {
   const liftingSummary = computeLiftingWeek(weekWorkouts)
   const hasWeeklyData = runningSummary !== null || liftingSummary !== null
 
+  // Pre-fetch plan week workouts so the calendar renders without a loading flicker
+  let planWeekWorkouts: WorkoutRow[] = []
+  if (plan) {
+    const planStart = new Date(plan.week_start_date + 'T00:00:00')
+    const planEnd = new Date(planStart)
+    planEnd.setDate(planEnd.getDate() + 7)
+    const { data: pw } = await serviceClient
+      .from('workouts').select('*').eq('user_id', user.id)
+      .gte('logged_at', planStart.toISOString())
+      .lt('logged_at', planEnd.toISOString())
+      .order('logged_at', { ascending: true })
+    planWeekWorkouts = (pw ?? []) as WorkoutRow[]
+  }
+
   return (
     <div className="space-y-12">
 
@@ -160,88 +117,27 @@ export default async function DashboardPage() {
                 <p className="text-base font-medium leading-snug">{plan.goal}</p>
                 <p className="text-sm text-muted-foreground mt-2 leading-relaxed">{plan.plan_json.summary}</p>
               </div>
-              {plan.week_start_date && (
-                <div className="shrink-0 text-right hidden sm:block">
-                  <p className="text-xs text-muted-foreground">Started</p>
-                  <p className="text-sm font-medium mt-0.5">
-                    {new Date(plan.week_start_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </p>
-                </div>
-              )}
+              <div className="shrink-0 text-right hidden sm:flex flex-col items-end gap-3">
+                {plan.week_start_date && (
+                  <div>
+                    <p className="text-xs text-muted-foreground">Started</p>
+                    <p className="text-sm font-medium mt-0.5">
+                      {new Date(plan.week_start_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </p>
+                  </div>
+                )}
+                <Link
+                  href="/onboarding"
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  New plan →
+                </Link>
+              </div>
             </div>
           </div>
 
-          {/* ── Weekly plan ── */}
-          <section>
-            <SectionLabel>This week</SectionLabel>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3">
-              {plan.plan_json.weeklyPlan.map((day) => (
-                <div
-                  key={day.day}
-                  className={cn(
-                    'rounded-xl border border-border bg-card border-l-2 p-4 flex flex-col gap-2 min-h-[160px]',
-                    dayAccentClass(day.focus, day.isRest),
-                    day.isRest && 'opacity-50'
-                  )}
-                >
-                  <div>
-                    <p className="text-xs font-semibold">{day.day}</p>
-                    {day.date && (
-                      <p className="text-[11px] text-muted-foreground mt-0.5">
-                        {new Date(day.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                      </p>
-                    )}
-                  </div>
-
-                  <p className="text-xs font-medium text-foreground/80">{day.focus}</p>
-
-                  {/* Running targets */}
-                  {day.runningTargets && (
-                    <div className="flex flex-wrap gap-1">
-                      {day.runningTargets.distanceKm && (
-                        <span className="text-[10px] font-medium text-blue-400">{day.runningTargets.distanceKm} km</span>
-                      )}
-                      {day.runningTargets.paceMinPerKm && (
-                        <>
-                          <span className="text-[10px] text-muted-foreground/50">·</span>
-                          <span className="text-[10px] text-muted-foreground">{formatPace(day.runningTargets.paceMinPerKm)} /km</span>
-                        </>
-                      )}
-                      {day.runningTargets.paceKmPerH && (
-                        <>
-                          <span className="text-[10px] text-muted-foreground/50">·</span>
-                          <span className="text-[10px] text-muted-foreground">{day.runningTargets.paceKmPerH} km/h</span>
-                        </>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Prescribed exercises (collapsed preview) */}
-                  {day.exercises && day.exercises.length > 0 && (
-                    <div className="space-y-0.5">
-                      {day.exercises.slice(0, 3).map((ex, i) => (
-                        <p key={i} className="text-[10px] text-muted-foreground leading-tight truncate">
-                          {ex.exerciseName} {ex.sets}×{ex.reps}
-                        </p>
-                      ))}
-                      {day.exercises.length > 3 && (
-                        <p className="text-[10px] text-muted-foreground/50">+{day.exercises.length - 3} more</p>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Fallback description */}
-                  {!day.runningTargets && (!day.exercises || day.exercises.length === 0) && (
-                    <p className="text-[11px] text-muted-foreground leading-relaxed flex-1">{day.workout}</p>
-                  )}
-
-                  {!day.isRest && day.duration && (
-                    <p className="text-[10px] text-muted-foreground/60 mt-auto">{day.duration}</p>
-                  )}
-                </div>
-              ))}
-            </div>
-          </section>
+          {/* ── Weekly plan calendar ── */}
+          <WeekCalendar plan={plan} initialWorkouts={planWeekWorkouts} />
 
           {/* ── Coaching tips ── */}
           {plan.plan_json.tips?.length > 0 && (
@@ -404,7 +300,7 @@ export default async function DashboardPage() {
           </div>
         ) : (
           <div className="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
-            {recentWorkouts.map((w: WorkoutRow & { raw_input?: string; parsed_json?: Record<string, unknown> }) => (
+            {recentWorkouts.map((w: WorkoutRow) => (
               <div key={w.id} className="flex items-start gap-4 px-5 py-4">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm leading-snug truncate">{w.raw_input}</p>

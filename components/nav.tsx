@@ -30,11 +30,13 @@ export function Nav() {
             href="/dashboard"
             className="flex items-center gap-2 group"
           >
-            <span className="h-5 w-5 rounded bg-primary flex items-center justify-center text-[10px] font-bold text-primary-foreground select-none">
-              F
-            </span>
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0">
+              <rect width="22" height="22" rx="6" fill="hsl(var(--primary))" />
+              <path d="M6 15L10 8L13 12.5L15.5 9" stroke="white" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"/>
+              <circle cx="15.5" cy="9" r="1.25" fill="white"/>
+            </svg>
             <span className="text-sm font-semibold tracking-tight text-foreground">
-              FitLog
+              Pacer
             </span>
           </Link>
 
