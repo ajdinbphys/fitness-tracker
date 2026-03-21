@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PacerLogo } from '@/components/pacer-logo'
 
 export default function SignupPage() {
   const router = useRouter()
@@ -36,19 +37,14 @@ export default function SignupPage() {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
-
-        {/* Logo */}
-        <div className="mb-10 text-center">
-          <div className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-primary mb-5">
-            <span className="text-sm font-bold text-primary-foreground">F</span>
-          </div>
+        <div className="mb-8 text-center">
+          <PacerLogo />
           <h1 className="text-xl font-semibold text-foreground">Create your account</h1>
           <p className="text-sm text-muted-foreground mt-1.5">
             Build a training plan tailored to you
           </p>
         </div>
 
-        {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
             <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3.5 py-3 text-sm text-destructive">
@@ -68,7 +64,7 @@ export default function SignupPage() {
               onChange={e => setEmail(e.target.value)}
               required
               autoComplete="email"
-              className="h-10 bg-card border-border/60 focus:border-primary/60"
+              className="h-10 bg-card border-border/60"
             />
           </div>
 
@@ -85,7 +81,7 @@ export default function SignupPage() {
               required
               minLength={6}
               autoComplete="new-password"
-              className="h-10 bg-card border-border/60 focus:border-primary/60"
+              className="h-10 bg-card border-border/60"
             />
             <p className="text-xs text-muted-foreground">Minimum 6 characters</p>
           </div>
