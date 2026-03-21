@@ -177,7 +177,6 @@ export default function WeekCalendar({ plan, initialWorkouts }: WeekCalendarProp
   }, [weekStart]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const today = todayStr()
-  const isOnPlanWeek = weekStart === planWeekStart
 
   const weekDays: WeekDay[] = Array.from({ length: 7 }, (_, i) => {
     const date = addDays(weekStart, i)
@@ -292,7 +291,7 @@ export default function WeekCalendar({ plan, initialWorkouts }: WeekCalendarProp
               )}
 
               {/* Running targets */}
-              {isOnPlanWeek && wd.planDay?.runningTargets && (
+              {wd.planDay?.runningTargets && (
                 <div className="flex flex-wrap gap-1">
                   {wd.planDay.runningTargets.totalDistanceKm && (
                     <span className="text-[10px] font-medium text-blue-400">{wd.planDay.runningTargets.totalDistanceKm} km</span>
@@ -310,7 +309,7 @@ export default function WeekCalendar({ plan, initialWorkouts }: WeekCalendarProp
               )}
 
               {/* Exercises preview */}
-              {isOnPlanWeek && wd.planDay?.exercises && wd.planDay.exercises.length > 0 && (
+              {wd.planDay?.exercises && wd.planDay.exercises.length > 0 && (
                 <div className="space-y-0.5">
                   {wd.planDay.exercises.slice(0, 3).map((ex, i) => (
                     <p key={i} className="text-[10px] text-muted-foreground leading-tight truncate">
@@ -340,7 +339,7 @@ export default function WeekCalendar({ plan, initialWorkouts }: WeekCalendarProp
               )}
 
               {/* Fallback description */}
-              {isOnPlanWeek && wd.planDay && !wd.planDay.runningTargets &&
+              {wd.planDay && !wd.planDay.runningTargets &&
                 (!wd.planDay.exercises || wd.planDay.exercises.length === 0) && (
                 <p className="text-[11px] text-muted-foreground leading-relaxed flex-1">{wd.planDay.workout}</p>
               )}
@@ -353,7 +352,6 @@ export default function WeekCalendar({ plan, initialWorkouts }: WeekCalendarProp
       {selectedDay && (
         <DayModal
           day={selectedDay}
-          isOnPlanWeek={isOnPlanWeek}
           onClose={() => setSelectedDay(null)}
         />
       )}
@@ -457,11 +455,9 @@ function RunningTargetsBlock({ rt }: { rt: RunningTargets }) {
 
 function DayModal({
   day,
-  isOnPlanWeek,
   onClose,
 }: {
   day: WeekDay
-  isOnPlanWeek: boolean
   onClose: () => void
 }) {
   const { planDay, loggedWorkout, status } = day
@@ -508,7 +504,7 @@ function DayModal({
         <div className="px-6 py-5 space-y-5">
 
           {/* ── Planned workout ── */}
-          {isOnPlanWeek && planDay && !planDay.isRest && (
+          {planDay && !planDay.isRest && (
             <div className="space-y-3">
               <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">Planned</p>
               <p className="text-sm text-foreground/80 leading-relaxed">{planDay.workout}</p>
