@@ -182,8 +182,16 @@ export default function WeekCalendar({ plan, initialWorkouts }: WeekCalendarProp
     const date = addDays(weekStart, i)
     const d = new Date(date + 'T00:00:00')
 
-    // Match plan day by date field — fixes alignment bug where Claude's day names can be wrong
-    const planDay = plan.plan_json.weeklyPlan.find(p => p.date === date) ?? null
+    // Primary: match by date field. Fallback: match by index from plan start (for plans without date fields).
+    const dayIndex = Math.round(
+      (new Date(date + 'T00:00:00').getTime() - new Date(planWeekStart + 'T00:00:00').getTime())
+      / (24 * 60 * 60 * 1000)
+    )
+    const planDay =
+      plan.plan_json.weeklyPlan.find(p => p.date === date) ??
+      (dayIndex >= 0 && dayIndex < plan.plan_json.weeklyPlan.length
+        ? plan.plan_json.weeklyPlan[dayIndex]
+        : null)
 
     const loggedWorkout = weekWorkouts.find(w => toDateStr(new Date(w.logged_at)) === date) ?? null
 
