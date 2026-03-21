@@ -141,9 +141,6 @@ export default function OnboardingPage() {
 
         {/* Header */}
         <div className="mb-10 text-center">
-          <div className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-primary mb-5">
-            <span className="text-sm font-bold text-primary-foreground">F</span>
-          </div>
           <h1 className="text-xl font-semibold text-foreground">
             {generating ? 'Building your plan…' : currentStep === 1 ? 'About you' : 'Your goal'}
           </h1>
