@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -25,8 +25,12 @@ const STEPS = ['About you', 'Your goal'] as const
 export default function OnboardingPage() {
   const router = useRouter()
 
+  // Locked once set — never change after first save
   const [sex, setSex] = useState<'male' | 'female' | ''>('')
   const [dateOfBirth, setDateOfBirth] = useState('')
+  const [profileLocked, setProfileLocked] = useState(false) // true if sex+dob already saved
+
+  // Can change each time
   const [heightCm, setHeightCm] = useState('')
   const [weightKg, setWeightKg] = useState('')
   const [planStartDate, setPlanStartDate] = useState(nextMonday())
@@ -38,13 +42,29 @@ export default function OnboardingPage() {
   const [currentStep, setCurrentStep] = useState<1 | 2>(1)
   const [error, setError] = useState('')
   const [generating, setGenerating] = useState(false)
+  const [profileLoading, setProfileLoading] = useState(true)
 
-  const profileComplete =
-    sex !== '' && dateOfBirth !== '' && heightCm !== '' && weightKg !== '' && planStartDate !== ''
+  useEffect(() => {
+    fetch('/api/profile')
+      .then(r => r.json())
+      .then(({ profile }) => {
+        if (profile) {
+          if (profile.sex) setSex(profile.sex)
+          if (profile.date_of_birth) setDateOfBirth(profile.date_of_birth)
+          if (profile.sex && profile.date_of_birth) setProfileLocked(true)
+          if (profile.height_cm) setHeightCm(String(profile.height_cm))
+          if (profile.weight_kg) setWeightKg(String(profile.weight_kg))
+        }
+      })
+      .finally(() => setProfileLoading(false))
+  }, [])
 
   const age = dateOfBirth
     ? Math.floor((Date.now() - new Date(dateOfBirth).getTime()) / (1000 * 60 * 60 * 24 * 365.25))
     : null
+
+  const profileComplete =
+    sex !== '' && dateOfBirth !== '' && heightCm !== '' && weightKg !== '' && planStartDate !== ''
 
   function handleProfileNext(e: React.SyntheticEvent) {
     e.preventDefault()
@@ -59,6 +79,18 @@ export default function OnboardingPage() {
 
     setError('')
     setGenerating(true)
+
+    // Save profile (sex+dob only on first save; always update height+weight)
+    await fetch('/api/profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sex: profileLocked ? undefined : sex,
+        dateOfBirth: profileLocked ? undefined : dateOfBirth,
+        heightCm: Number(heightCm),
+        weightKg: Number(weightKg),
+      }),
+    })
 
     const validateRes = await fetch('/api/plan/validate', {
       method: 'POST',
@@ -93,6 +125,14 @@ export default function OnboardingPage() {
     }
 
     router.push('/dashboard')
+  }
+
+  if (profileLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="h-6 w-6 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+      </div>
+    )
   }
 
   return (
@@ -159,44 +199,61 @@ export default function OnboardingPage() {
         ) : currentStep === 1 ? (
           /* ── Step 1: Profile ── */
           <form onSubmit={handleProfileNext} className="space-y-5">
-            {/* Sex */}
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Sex
-              </Label>
-              <div className="grid grid-cols-2 gap-2">
-                {(['male', 'female'] as const).map(s => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setSex(s)}
-                    className={`h-10 rounded-md border text-sm font-medium capitalize transition-all ${
-                      sex === s
-                        ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-border bg-card text-muted-foreground hover:text-foreground hover:border-border/80'
-                    }`}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </div>
 
-            {/* Date of birth */}
-            <div className="space-y-1.5">
-              <Label htmlFor="dob" className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Date of birth{age !== null ? <span className="normal-case ml-2 text-muted-foreground/60">— {age} years old</span> : null}
-              </Label>
-              <Input
-                id="dob"
-                type="date"
-                value={dateOfBirth}
-                onChange={e => setDateOfBirth(e.target.value)}
-                max={new Date().toISOString().split('T')[0]}
-                required
-                className="h-10 bg-card border-border/60"
-              />
-            </div>
+            {profileLocked ? (
+              /* Locked: sex + dob shown as read-only summary */
+              <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-0.5">Profile</p>
+                  <p className="text-sm font-medium capitalize">
+                    {sex}
+                    {age !== null && <span className="text-muted-foreground font-normal">, {age} years old</span>}
+                  </p>
+                </div>
+                <span className="text-[11px] text-muted-foreground/60">Saved</span>
+              </div>
+            ) : (
+              <>
+                {/* Sex */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Sex
+                  </Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(['male', 'female'] as const).map(s => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setSex(s)}
+                        className={`h-10 rounded-md border text-sm font-medium capitalize transition-all ${
+                          sex === s
+                            ? 'border-primary bg-primary/10 text-primary'
+                            : 'border-border bg-card text-muted-foreground hover:text-foreground hover:border-border/80'
+                        }`}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Date of birth */}
+                <div className="space-y-1.5">
+                  <Label htmlFor="dob" className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Date of birth{age !== null ? <span className="normal-case ml-2 text-muted-foreground/60">— {age} years old</span> : null}
+                  </Label>
+                  <Input
+                    id="dob"
+                    type="date"
+                    value={dateOfBirth}
+                    onChange={e => setDateOfBirth(e.target.value)}
+                    max={new Date().toISOString().split('T')[0]}
+                    required
+                    className="h-10 bg-card border-border/60"
+                  />
+                </div>
+              </>
+            )}
 
             {/* Height & Weight */}
             <div className="grid grid-cols-2 gap-4">
@@ -342,7 +399,7 @@ export default function OnboardingPage() {
               <Button
                 type="submit"
                 className="flex-1 h-10"
-                disabled={!goal.trim() || !fitnessLevel || !daysPerWeek}
+                disabled={!goal.trim() || !fitnessLevel || !daysPerWeek || generating}
               >
                 Generate plan
               </Button>

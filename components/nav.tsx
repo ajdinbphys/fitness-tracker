@@ -8,6 +8,7 @@ const NAV_LINKS = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/log', label: 'Log' },
   { href: '/plans', label: 'Plans' },
+  { href: '/weight', label: 'Weight' },
 ]
 
 export function Nav() {

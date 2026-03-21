@@ -4,8 +4,9 @@ import { createServiceClient } from '@/lib/supabase/service'
 
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -16,7 +17,7 @@ export async function DELETE(
   const { data: plan } = await serviceClient
     .from('plans')
     .select('id')
-    .eq('id', params.id)
+    .eq('id', id)
     .eq('user_id', user.id)
     .single()
 
@@ -25,7 +26,7 @@ export async function DELETE(
   const { error } = await serviceClient
     .from('plans')
     .delete()
-    .eq('id', params.id)
+    .eq('id', id)
 
   if (error) return NextResponse.json({ error: 'Failed to delete' }, { status: 500 })
   return NextResponse.json({ ok: true })

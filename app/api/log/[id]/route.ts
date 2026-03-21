@@ -7,8 +7,9 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -24,7 +25,7 @@ export async function PATCH(
   const { data: existing } = await serviceClient
     .from('workouts')
     .select('id, logged_at')
-    .eq('id', params.id)
+    .eq('id', id)
     .eq('user_id', user.id)
     .single()
 
@@ -110,7 +111,7 @@ Rules:
       exercises_json: exercises.length > 0 ? exercises : null,
       total_volume_kg: totalVolumeKg,
     })
-    .eq('id', params.id)
+    .eq('id', id)
     .select()
     .single()
 
