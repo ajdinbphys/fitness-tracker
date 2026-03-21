@@ -56,6 +56,10 @@ export default function LogPage() {
   const [lastResult, setLastResult] = useState<LogResult | null>(null)
   const [history, setHistory] = useState<WorkoutEntry[]>([])
   const [historyLoading, setHistoryLoading] = useState(true)
+
+  function handleUpdate(updated: WorkoutEntry) {
+    setHistory(prev => prev.map(w => w.id === updated.id ? updated : w))
+  }
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => { fetchHistory() }, [])
@@ -163,7 +167,7 @@ export default function LogPage() {
         ) : (
           <div className="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
             {history.map((w) => (
-              <WorkoutHistoryRow key={w.id} workout={w} />
+              <WorkoutHistoryRow key={w.id} workout={w} onUpdate={handleUpdate} />
             ))}
           </div>
         )}
@@ -252,19 +256,62 @@ function ConfirmationCard({ result }: { result: LogResult }) {
 
 // ─── History row ──────────────────────────────────────────────────────────────
 
-function WorkoutHistoryRow({ workout: w }: { workout: WorkoutEntry }) {
+function WorkoutHistoryRow({ workout: w, onUpdate }: { workout: WorkoutEntry; onUpdate: (updated: WorkoutEntry) => void }) {
   const [expanded, setExpanded] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [editInput, setEditInput] = useState(w.raw_input)
+  const [editLoading, setEditLoading] = useState(false)
+  const [editError, setEditError] = useState('')
   const hasExercises = (w.exercises_json?.length ?? 0) > 0
   const isRunning = w.distance_km != null || w.pace_min_per_km != null
 
+  async function handleEditSubmit(e: React.SyntheticEvent) {
+    e.preventDefault()
+    if (!editInput.trim() || editInput === w.raw_input) { setEditing(false); return }
+    setEditLoading(true)
+    setEditError('')
+    const res = await fetch(`/api/log/${w.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rawInput: editInput }),
+    })
+    const data = await res.json()
+    setEditLoading(false)
+    if (!res.ok) { setEditError(data.error ?? 'Update failed'); return }
+    onUpdate(data.workout)
+    setEditing(false)
+  }
+
   return (
     <div
-      className={cn('px-5 py-4', hasExercises && 'cursor-pointer hover:bg-muted/20 transition-colors')}
-      onClick={() => hasExercises && setExpanded(v => !v)}
+      className={cn('px-5 py-4', !editing && hasExercises && 'cursor-pointer hover:bg-muted/20 transition-colors')}
+      onClick={() => !editing && hasExercises && setExpanded(v => !v)}
     >
       <div className="flex items-start gap-4">
         <div className="flex-1 min-w-0 space-y-2">
-          <p className="text-sm leading-snug">{w.raw_input}</p>
+          {editing ? (
+            <form onSubmit={handleEditSubmit} onClick={e => e.stopPropagation()} className="space-y-2">
+              <textarea
+                className="w-full rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm leading-relaxed resize-none focus:outline-none focus:ring-1 focus:ring-primary/50"
+                rows={3}
+                value={editInput}
+                onChange={e => setEditInput(e.target.value)}
+                autoFocus
+                disabled={editLoading}
+              />
+              {editError && <p className="text-xs text-destructive">{editError}</p>}
+              <div className="flex items-center gap-2">
+                <button type="submit" disabled={editLoading || !editInput.trim()} className="text-xs font-medium text-primary hover:text-primary/80 transition-colors disabled:opacity-50">
+                  {editLoading ? 'Saving…' : 'Save'}
+                </button>
+                <button type="button" onClick={() => { setEditing(false); setEditInput(w.raw_input); setEditError('') }} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                  Cancel
+                </button>
+              </div>
+            </form>
+          ) : (
+            <p className="text-sm leading-snug">{w.raw_input}</p>
+          )}
 
           {/* Metric chips */}
           <div className="flex flex-wrap gap-1.5">
@@ -343,9 +390,19 @@ function WorkoutHistoryRow({ workout: w }: { workout: WorkoutEntry }) {
           )}
         </div>
 
-        <time className="shrink-0 text-xs text-muted-foreground pt-0.5">
-          {new Date(w.logged_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-        </time>
+        <div className="shrink-0 flex flex-col items-end gap-1.5 pt-0.5">
+          <time className="text-xs text-muted-foreground">
+            {new Date(w.logged_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+          </time>
+          {!editing && (
+            <button
+              onClick={e => { e.stopPropagation(); setEditing(true) }}
+              className="text-[11px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+            >
+              Edit
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )

@@ -164,7 +164,7 @@ export default function WeekCalendar({ plan, initialWorkouts }: WeekCalendarProp
   const isFirstRender = useRef(true)
 
   useEffect(() => {
-    if (isFirstRender.current && weekStart === planWeekStart) {
+    if (isFirstRender.current && weekStart === planWeekStart && initialWorkouts.length > 0) {
       isFirstRender.current = false
       return
     }
