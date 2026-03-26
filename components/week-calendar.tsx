@@ -157,7 +157,7 @@ function cn(...classes: (string | undefined | false | null)[]): string {
 export default function WeekCalendar({ plan, initialWorkouts }: WeekCalendarProps) {
   const planWeekStart = getMondayOf(plan.week_start_date)
 
-  const [weekStart, setWeekStart] = useState(planWeekStart)
+  const [weekStart, setWeekStart] = useState(getMondayOf(todayStr()))
   const [weekWorkouts, setWeekWorkouts] = useState<WorkoutRow[]>(initialWorkouts)
   const [loading, setLoading] = useState(false)
   const [selectedDay, setSelectedDay] = useState<WeekDay | null>(null)

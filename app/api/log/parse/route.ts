@@ -10,12 +10,14 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { rawInput } = await req.json()
+  const { rawInput, logDate } = await req.json()
   if (!rawInput || typeof rawInput !== 'string') {
     return NextResponse.json({ error: 'rawInput is required' }, { status: 400 })
   }
 
   const today = new Date().toISOString().split('T')[0]
+  // Use explicitly provided date (from UI date picker) or fall back to today
+  const targetDate = typeof logDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(logDate) ? logDate : today
 
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
@@ -25,7 +27,7 @@ export async function POST(req: NextRequest) {
         role: 'user',
         content: `You are a fitness workout parser. Extract structured data from the user's free-text log.
 
-Today's date: ${today}
+Today's date: ${targetDate}
 User's log: "${rawInput}"
 
 Return JSON only, no markdown, no preamble. Use exactly this structure:
@@ -80,6 +82,13 @@ Rules:
   const exercises = Array.isArray(parsedJson.exercises) ? parsedJson.exercises : []
   const totalVolumeKg = typeof parsedJson.totalVolumeKg === 'number' ? parsedJson.totalVolumeKg : null
 
+  // Compute duration from distance × pace if Claude didn't extract it directly
+  const durationMinutes = typeof parsedJson.durationMinutes === 'number'
+    ? parsedJson.durationMinutes
+    : (running?.distanceKm && running?.paceMinPerKm)
+      ? Math.round(running.distanceKm * running.paceMinPerKm)
+      : null
+
   const serviceClient = createServiceClient()
   const { data, error } = await serviceClient
     .from('workouts')
@@ -88,9 +97,9 @@ Rules:
       raw_input: rawInput,
       parsed_json: parsedJson,
       activity_type: (parsedJson.activityType as string) ?? null,
-      duration_minutes: (parsedJson.durationMinutes as number) ?? null,
+      duration_minutes: durationMinutes,
       notes: (parsedJson.notes as string) ?? null,
-      logged_at: new Date().toISOString(),
+      logged_at: new Date(targetDate + 'T12:00:00').toISOString(),
       // Running metrics
       distance_km: running?.distanceKm ?? null,
       pace_min_per_km: running?.paceMinPerKm ?? null,

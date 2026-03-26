@@ -51,6 +51,10 @@ function Chip({ children }: { children: React.ReactNode }) {
 
 export default function LogPage() {
   const [input, setInput] = useState('')
+  const [logDate, setLogDate] = useState(() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [lastResult, setLastResult] = useState<LogResult | null>(null)
@@ -59,6 +63,10 @@ export default function LogPage() {
 
   function handleUpdate(updated: WorkoutEntry) {
     setHistory(prev => prev.map(w => w.id === updated.id ? updated : w))
+  }
+
+  function handleDelete(id: string) {
+    setHistory(prev => prev.filter(w => w.id !== id))
   }
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -85,7 +93,7 @@ export default function LogPage() {
     const res = await fetch('/api/log/parse', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rawInput: input }),
+      body: JSON.stringify({ rawInput: input, logDate }),
     })
     const data = await res.json()
 
@@ -131,7 +139,14 @@ export default function LogPage() {
           }}
         />
         <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-muted/30">
-          <p className="text-[11px] text-muted-foreground hidden sm:block">⌘ Return to submit</p>
+          <input
+            type="date"
+            value={logDate}
+            max={(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` })()}
+            onChange={e => setLogDate(e.target.value)}
+            disabled={loading}
+            className="text-[11px] text-muted-foreground bg-transparent border-0 outline-none cursor-pointer hover:text-foreground transition-colors"
+          />
           <Button type="submit" size="sm" disabled={loading || !input.trim()} className="ml-auto">
             {loading ? (
               <span className="flex items-center gap-2">
@@ -167,7 +182,7 @@ export default function LogPage() {
         ) : (
           <div className="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
             {history.map((w) => (
-              <WorkoutHistoryRow key={w.id} workout={w} onUpdate={handleUpdate} />
+              <WorkoutHistoryRow key={w.id} workout={w} onUpdate={handleUpdate} onDelete={handleDelete} />
             ))}
           </div>
         )}
@@ -256,30 +271,42 @@ function ConfirmationCard({ result }: { result: LogResult }) {
 
 // ─── History row ──────────────────────────────────────────────────────────────
 
-function WorkoutHistoryRow({ workout: w, onUpdate }: { workout: WorkoutEntry; onUpdate: (updated: WorkoutEntry) => void }) {
+function WorkoutHistoryRow({ workout: w, onUpdate, onDelete }: { workout: WorkoutEntry; onUpdate: (updated: WorkoutEntry) => void; onDelete: (id: string) => void }) {
   const [expanded, setExpanded] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editInput, setEditInput] = useState(w.raw_input)
+  const [editDate, setEditDate] = useState(() => {
+    const d = new Date(w.logged_at)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  })
   const [editLoading, setEditLoading] = useState(false)
   const [editError, setEditError] = useState('')
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleteLoading, setDeleteLoading] = useState(false)
   const hasExercises = (w.exercises_json?.length ?? 0) > 0
   const isRunning = w.distance_km != null || w.pace_min_per_km != null
 
   async function handleEditSubmit(e: React.SyntheticEvent) {
     e.preventDefault()
-    if (!editInput.trim() || editInput === w.raw_input) { setEditing(false); return }
     setEditLoading(true)
     setEditError('')
     const res = await fetch(`/api/log/${w.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rawInput: editInput }),
+      body: JSON.stringify({ rawInput: editInput, logDate: editDate }),
     })
     const data = await res.json()
     setEditLoading(false)
     if (!res.ok) { setEditError(data.error ?? 'Update failed'); return }
     onUpdate(data.workout)
     setEditing(false)
+  }
+
+  async function handleDelete() {
+    setDeleteLoading(true)
+    const res = await fetch(`/api/log/${w.id}`, { method: 'DELETE' })
+    setDeleteLoading(false)
+    if (res.ok) onDelete(w.id)
   }
 
   return (
@@ -298,6 +325,14 @@ function WorkoutHistoryRow({ workout: w, onUpdate }: { workout: WorkoutEntry; on
                 onChange={e => setEditInput(e.target.value)}
                 autoFocus
                 disabled={editLoading}
+              />
+              <input
+                type="date"
+                value={editDate}
+                max={(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` })()}
+                onChange={e => setEditDate(e.target.value)}
+                disabled={editLoading}
+                className="text-xs text-muted-foreground bg-transparent border border-border/60 rounded-md px-2 py-1 outline-none focus:ring-1 focus:ring-primary/50"
               />
               {editError && <p className="text-xs text-destructive">{editError}</p>}
               <div className="flex items-center gap-2">
@@ -394,13 +429,38 @@ function WorkoutHistoryRow({ workout: w, onUpdate }: { workout: WorkoutEntry; on
           <time className="text-xs text-muted-foreground">
             {new Date(w.logged_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
           </time>
-          {!editing && (
-            <button
-              onClick={e => { e.stopPropagation(); setEditing(true) }}
-              className="text-[11px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
-            >
-              Edit
-            </button>
+          {!editing && !confirmDelete && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={e => { e.stopPropagation(); setEditing(true) }}
+                className="text-[11px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+              >
+                Edit
+              </button>
+              <button
+                onClick={e => { e.stopPropagation(); setConfirmDelete(true) }}
+                className="text-[11px] text-muted-foreground/40 hover:text-rose-500 transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          )}
+          {confirmDelete && (
+            <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+              <button
+                onClick={handleDelete}
+                disabled={deleteLoading}
+                className="text-[11px] font-medium text-rose-500 hover:text-rose-400 transition-colors disabled:opacity-50"
+              >
+                {deleteLoading ? 'Deleting…' : 'Confirm'}
+              </button>
+              <button
+                onClick={() => setConfirmDelete(false)}
+                className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
           )}
         </div>
       </div>

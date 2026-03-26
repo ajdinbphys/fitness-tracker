@@ -50,27 +50,43 @@ export default async function DashboardPage() {
   if (!user) redirect('/login')
 
   const serviceClient = createServiceClient()
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
 
-  const [{ data: plansData }, { data: allWeekWorkouts }] = await Promise.all([
+  // Current calendar week: Monday 00:00 UTC to now
+  const now = new Date()
+  const dayOfWeek = now.getUTCDay()
+  const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+  const thisMonday = new Date(now)
+  thisMonday.setUTCDate(now.getUTCDate() + diffToMonday)
+  thisMonday.setUTCHours(0, 0, 0, 0)
+
+  const WORKOUT_COLS = 'id, logged_at, activity_type, duration_minutes, distance_km, pace_min_per_km, pace_km_per_h, exercises_json, total_volume_kg, raw_input, parsed_json'
+
+  const [{ data: plansData }, { data: thisWeekData }, { data: allData }] = await Promise.all([
     serviceClient
       .from('plans').select('*').eq('user_id', user.id)
       .order('created_at', { ascending: false }),
     serviceClient
-      .from('workouts')
-      .select('id, logged_at, activity_type, duration_minutes, distance_km, pace_min_per_km, pace_km_per_h, exercises_json, total_volume_kg, raw_input, parsed_json')
-      .eq('user_id', user.id)
-      .gte('logged_at', sevenDaysAgo)
+      .from('workouts').select(WORKOUT_COLS).eq('user_id', user.id)
+      .gte('logged_at', thisMonday.toISOString())
       .order('logged_at', { ascending: false }),
+    serviceClient
+      .from('workouts').select(WORKOUT_COLS).eq('user_id', user.id)
+      .order('logged_at', { ascending: false })
+      .limit(500),
   ])
 
   const plans: Plan[] = (plansData ?? []) as Plan[]
-  const weekWorkouts: WorkoutRow[] = (allWeekWorkouts ?? []) as WorkoutRow[]
-  const recentWorkouts = weekWorkouts.slice(0, 6)
+  const thisWeekWorkouts: WorkoutRow[] = (thisWeekData ?? []) as WorkoutRow[]
+  const allWorkouts: WorkoutRow[] = (allData ?? []) as WorkoutRow[]
+  const recentWorkouts = allWorkouts.slice(0, 6)
 
-  const runningSummary = computeRunningWeek(weekWorkouts)
-  const liftingSummary = computeLiftingWeek(weekWorkouts)
-  const hasWeeklyData = runningSummary !== null || liftingSummary !== null
+  const weekRunningSummary = computeRunningWeek(thisWeekWorkouts)
+  const weekLiftingSummary = computeLiftingWeek(thisWeekWorkouts)
+  const hasWeeklyData = weekRunningSummary !== null || weekLiftingSummary !== null
+
+  const totalRunningSummary = computeRunningWeek(allWorkouts)
+  const totalLiftingSummary = computeLiftingWeek(allWorkouts)
+  const hasTotalData = totalRunningSummary !== null || totalLiftingSummary !== null
 
   // Pre-fetch workouts for the first (most recent) plan's week
   let planWeekWorkouts: WorkoutRow[] = []
@@ -104,33 +120,33 @@ export default async function DashboardPage() {
       {/* ── Plans section (goal banner + calendar + tips) ── */}
       <PlansSection plans={plans} initialWorkouts={planWeekWorkouts} />
 
-      {/* ── Weekly training metrics ── */}
+      {/* ── This week's training ── */}
       {hasWeeklyData && (
         <section>
           <SectionLabel>This week&apos;s training</SectionLabel>
           <div className="grid gap-4 sm:grid-cols-2">
 
-            {runningSummary && (
+            {weekRunningSummary && (
               <div className="rounded-xl border border-border bg-card p-5 space-y-4">
                 <div className="flex items-center gap-2">
                   <span className="h-2 w-2 rounded-full bg-blue-500" />
                   <p className="text-sm font-medium">Running</p>
-                  <span className="text-xs text-muted-foreground ml-auto">{runningSummary.sessions} session{runningSummary.sessions > 1 ? 's' : ''}</span>
+                  <span className="text-xs text-muted-foreground ml-auto">{weekRunningSummary.sessions} session{weekRunningSummary.sessions > 1 ? 's' : ''}</span>
                 </div>
                 <div className="grid grid-cols-3 gap-3">
                   <div>
-                    <p className="text-xl font-semibold tabular-nums">{runningSummary.totalDistanceKm}</p>
+                    <p className="text-xl font-semibold tabular-nums">{weekRunningSummary.totalDistanceKm}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">km total</p>
                   </div>
                   <div>
-                    <p className="text-xl font-semibold tabular-nums">{formatDuration(runningSummary.totalDurationMinutes)}</p>
+                    <p className="text-xl font-semibold tabular-nums">{formatDuration(weekRunningSummary.totalDurationMinutes)}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">time</p>
                   </div>
-                  {runningSummary.avgPaceMinPerKm && (
+                  {weekRunningSummary.avgPaceMinPerKm && (
                     <div>
-                      <p className="text-xl font-semibold tabular-nums">{formatPace(runningSummary.avgPaceMinPerKm)}</p>
+                      <p className="text-xl font-semibold tabular-nums">{formatPace(weekRunningSummary.avgPaceMinPerKm)}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        avg /km{runningSummary.avgPaceKmPerH && <> · {runningSummary.avgPaceKmPerH} km/h</>}
+                        avg /km{weekRunningSummary.avgPaceKmPerH && <> · {weekRunningSummary.avgPaceKmPerH} km/h</>}
                       </p>
                     </div>
                   )}
@@ -138,28 +154,28 @@ export default async function DashboardPage() {
               </div>
             )}
 
-            {liftingSummary && (
+            {weekLiftingSummary && (
               <div className="rounded-xl border border-border bg-card p-5 space-y-4">
                 <div className="flex items-center gap-2">
                   <span className="h-2 w-2 rounded-full bg-orange-500" />
                   <p className="text-sm font-medium">Strength</p>
-                  <span className="text-xs text-muted-foreground ml-auto">{liftingSummary.sessions} session{liftingSummary.sessions > 1 ? 's' : ''}</span>
+                  <span className="text-xs text-muted-foreground ml-auto">{weekLiftingSummary.sessions} session{weekLiftingSummary.sessions > 1 ? 's' : ''}</span>
                 </div>
                 <div>
-                  <p className="text-xl font-semibold tabular-nums">{formatVolume(liftingSummary.totalVolumeKg)} kg</p>
+                  <p className="text-xl font-semibold tabular-nums">{formatVolume(weekLiftingSummary.totalVolumeKg)} kg</p>
                   <p className="text-xs text-muted-foreground mt-0.5">total volume lifted</p>
                 </div>
                 <div className="space-y-1.5">
-                  {liftingSummary.muscleGroups
-                    .filter(m => m.volumeKg > 0)
+                  {weekLiftingSummary.muscleGroups
+                    .filter((m: { volumeKg: number }) => m.volumeKg > 0)
                     .slice(0, 4)
-                    .map(m => (
+                    .map((m: { key: string; label: string; volumeKg: number; frequency: number }) => (
                       <div key={m.key} className="flex items-center gap-2">
                         <p className="text-xs text-muted-foreground w-20 shrink-0">{m.label}</p>
                         <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
                           <div
                             className="h-full bg-orange-500/60 rounded-full"
-                            style={{ width: `${Math.round((m.volumeKg / liftingSummary.totalVolumeKg) * 100)}%` }}
+                            style={{ width: `${Math.round((m.volumeKg / weekLiftingSummary.totalVolumeKg) * 100)}%` }}
                           />
                         </div>
                         <p className="text-[11px] text-muted-foreground tabular-nums w-16 text-right">{formatVolume(m.volumeKg)} kg</p>
@@ -171,12 +187,12 @@ export default async function DashboardPage() {
             )}
           </div>
 
-          {liftingSummary && (
+          {weekLiftingSummary && (
             <div className="mt-4 rounded-xl border border-border bg-card p-5">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest mb-4">Muscle balance</p>
               <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-11 gap-1.5">
                 {MUSCLE_GROUPS.map(({ key, label }) => {
-                  const stat = liftingSummary.muscleGroups.find(m => m.key === key)
+                  const stat = weekLiftingSummary.muscleGroups.find((m: { key: string }) => m.key === key)
                   const level: HeatLevel = stat?.level ?? 'none'
                   return (
                     <div
@@ -203,6 +219,57 @@ export default async function DashboardPage() {
               </div>
             </div>
           )}
+        </section>
+      )}
+
+      {/* ── Total training ── */}
+      {hasTotalData && (
+        <section>
+          <SectionLabel>Total training</SectionLabel>
+          <div className="grid gap-4 sm:grid-cols-2">
+
+            {totalRunningSummary && (
+              <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-blue-500" />
+                  <p className="text-sm font-medium">Running</p>
+                  <span className="text-xs text-muted-foreground ml-auto">{totalRunningSummary.sessions} session{totalRunningSummary.sessions > 1 ? 's' : ''}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <p className="text-xl font-semibold tabular-nums">{totalRunningSummary.totalDistanceKm}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">km total</p>
+                  </div>
+                  <div>
+                    <p className="text-xl font-semibold tabular-nums">{formatDuration(totalRunningSummary.totalDurationMinutes)}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">time</p>
+                  </div>
+                  {totalRunningSummary.avgPaceMinPerKm && (
+                    <div>
+                      <p className="text-xl font-semibold tabular-nums">{formatPace(totalRunningSummary.avgPaceMinPerKm)}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        avg /km{totalRunningSummary.avgPaceKmPerH && <> · {totalRunningSummary.avgPaceKmPerH} km/h</>}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {totalLiftingSummary && (
+              <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-orange-500" />
+                  <p className="text-sm font-medium">Strength</p>
+                  <span className="text-xs text-muted-foreground ml-auto">{totalLiftingSummary.sessions} session{totalLiftingSummary.sessions > 1 ? 's' : ''}</span>
+                </div>
+                <div>
+                  <p className="text-xl font-semibold tabular-nums">{formatVolume(totalLiftingSummary.totalVolumeKg)} kg</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">total volume lifted</p>
+                </div>
+              </div>
+            )}
+          </div>
         </section>
       )}
 

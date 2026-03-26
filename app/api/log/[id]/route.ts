@@ -14,7 +14,7 @@ export async function PATCH(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { rawInput } = await req.json()
+  const { rawInput, logDate: newLogDate } = await req.json()
   if (!rawInput || typeof rawInput !== 'string') {
     return NextResponse.json({ error: 'rawInput is required' }, { status: 400 })
   }
@@ -31,8 +31,10 @@ export async function PATCH(
 
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  // Re-parse with Claude using the original log date
-  const logDate = existing.logged_at.split('T')[0]
+  // Use explicitly provided date, or fall back to the existing logged_at date
+  const validNewDate = typeof newLogDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(newLogDate)
+  const logDate = validNewDate ? newLogDate : existing.logged_at.split('T')[0]
+  const logged_at = validNewDate ? new Date(newLogDate + 'T12:00:00').toISOString() : existing.logged_at
 
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
@@ -97,13 +99,20 @@ Rules:
   const exercises = Array.isArray(parsedJson.exercises) ? parsedJson.exercises : []
   const totalVolumeKg = typeof parsedJson.totalVolumeKg === 'number' ? parsedJson.totalVolumeKg : null
 
+  const durationMinutes = typeof parsedJson.durationMinutes === 'number'
+    ? parsedJson.durationMinutes
+    : (running?.distanceKm && running?.paceMinPerKm)
+      ? Math.round(running.distanceKm * running.paceMinPerKm)
+      : null
+
   const { data, error } = await serviceClient
     .from('workouts')
     .update({
       raw_input: rawInput,
       parsed_json: parsedJson,
+      logged_at,
       activity_type: (parsedJson.activityType as string) ?? null,
-      duration_minutes: (parsedJson.durationMinutes as number) ?? null,
+      duration_minutes: durationMinutes,
       notes: (parsedJson.notes as string) ?? null,
       distance_km: running?.distanceKm ?? null,
       pace_min_per_km: running?.paceMinPerKm ?? null,
@@ -121,4 +130,29 @@ Rules:
   }
 
   return NextResponse.json({ workout: data, parsed: parsedJson })
+}
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const serviceClient = createServiceClient()
+
+  const { data: existing } = await serviceClient
+    .from('workouts')
+    .select('id')
+    .eq('id', id)
+    .eq('user_id', user.id)
+    .single()
+
+  if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  const { error } = await serviceClient.from('workouts').delete().eq('id', id)
+  if (error) return NextResponse.json({ error: 'Failed to delete' }, { status: 500 })
+  return NextResponse.json({ ok: true })
 }
